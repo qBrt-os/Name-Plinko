@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a2c38">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a2c38">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#1a2c38">
+    <meta name="msapplication-navbutton-color" content="#1a2c38">
+    <meta name="apple-mobile-web-app-status-bar-style" content="#1a2c38">
+    <title>Name-Plinko</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231a2c38'/%3E%3Ccircle cx='32' cy='16' r='6' fill='%2300e701'/%3E%3Ccircle cx='22' cy='32' r='4' fill='%23ffffff'/%3E%3Ccircle cx='42' cy='32' r='4' fill='%23ffffff'/%3E%3Ccircle cx='32' cy='52' r='5' fill='%23ff0055'/%3E%3C/svg%3E">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Matter.js Physics Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/board.css">
+    <link rel="stylesheet" href="css/sidebar.css">
+</head>
+<body>
+    <div class="site-header-bar" id="site-header-bar" aria-hidden="true"></div>
+    <main class="stake-app">
+        <!-- Center Arena: Plinko Board -->
+        <div class="canvas-container">
+            <div class="board-frame">
+                <canvas id="plinko-canvas" aria-label="Plinko Name Picker Board"></canvas>
+
+                <div class="countdown-overlay" id="countdown-overlay" aria-hidden="true">
+                    <span class="countdown-text" id="countdown-text">3</span>
+                </div>
+
+                <div class="winner-banner" id="winner-banner" aria-live="polite">
+                    <div class="winner-badge" id="winner-badge">🏆 WINNER</div>
+                    <span class="winner-name" id="winner-name"></span>
+                    <span class="winner-label" id="winner-label">IS NEXT!</span>
+                </div>
+            </div>
+
+            <div class="toast" id="toast" role="status"></div>
+        </div>
+
+        <!-- Right Sidebar -->
+        <aside class="sidebar-right">
+            <!-- Brand Header -->
+            <div class="sidebar-brand-header">
+                <div class="brand">
+                    <div class="stake-logo">
+                        <span class="stake-p">PLINKO</span>
+                        <span class="stake-dot"></span>
+                    </div>
+                </div>
+
+                <div class="header-actions">
+                    <button type="button" class="icon-btn" id="sound-toggle-btn" title="Toggle Sound" aria-label="Toggle Sound">🔊</button>
+                    <button type="button" class="icon-btn" id="settings-btn" title="Settings" aria-label="Settings">⚙️</button>
+                </div>
+            </div>
+
+            <!-- Names Input -->
+            <section class="sidebar-section">
+                <div class="section-header">
+                    <h2>Names List</h2>
+                    <div class="util-actions">
+                        <button type="button" class="util-chip" id="shuffle-btn" title="Shuffle names">Shuffle</button>
+                        <button type="button" class="util-chip" id="clear-list-btn" title="Clear names">Clear</button>
+                    </div>
+                </div>
+
+                <div class="input-wrapper">
+                    <textarea
+                        class="stake-textarea"
+                        id="class-list"
+                        aria-label="Names list, one per line"
+                        placeholder="Enter names, one per line:&#10;Alice&#10;Bob&#10;Charlie&#10;..."
+                    ></textarea>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="button-row main-actions">
+                    <button type="button" class="stake-btn-green" id="drop-btn">
+                        <span>Drop</span>
+                    </button>
+                    <button type="button" class="stake-btn-secondary" id="next-btn" disabled>Next Round →</button>
+                </div>
+
+                <div class="button-row sub-actions">
+                    <button type="button" class="stake-btn-secondary" id="redo-btn" disabled>Redo Last</button>
+                    <button type="button" class="stake-btn-secondary" id="reset-btn">Reset</button>
+                </div>
+            </section>
+
+            <!-- Player Roster (color-coded) -->
+            <section class="sidebar-section roster-section">
+                <div class="section-header">
+                    <h2>Players</h2>
+                    <span class="stake-badge" id="players-count">0</span>
+                </div>
+                <div class="roster-list" id="roster-list">
+                    <div class="no-results">Enter names above</div>
+                </div>
+            </section>
+
+            <!-- Results History -->
+            <section class="sidebar-section results-section">
+                <div class="section-header">
+                    <h2>Results</h2>
+                    <span class="stake-badge" id="results-count">0</span>
+                </div>
+                <ul class="results-list" id="results-list">
+                    <li class="no-results">No winners yet — press Drop!</li>
+                </ul>
+                <div class="button-row">
+                    <button type="button" class="stake-btn-secondary full-width" id="copy-btn" disabled>Copy Order</button>
+                </div>
+            </section>
+        </aside>
+    </main>
+
+    <!-- Settings Dialog Modal -->
+    <div class="modal-backdrop" id="settings-modal" aria-hidden="true">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button type="button" class="close-btn" id="close-settings-btn" aria-label="Close settings">&times;</button>
+            </div>
+
+            <div class="setting-group">
+                <label for="volume-slider">Sound Volume</label>
+                <input type="range" id="volume-slider" class="setting-slider" min="0" max="1" step="0.05" value="0.7">
+            </div>
+
+            <div class="setting-group">
+                <label for="speed-slider">Drop Speed</label>
+                <input type="range" id="speed-slider" class="setting-slider" min="0.2" max="1.5" step="0.05" value="0.6">
+            </div>
+
+            <div class="setting-group">
+                <label for="bounciness-slider">Peg Bounciness</label>
+                <input type="range" id="bounciness-slider" class="setting-slider" min="0.3" max="0.8" step="0.05" value="0.55">
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Bundle -->
+    <script src="js/app.js?v=3"></script>
+</body>
+</html>

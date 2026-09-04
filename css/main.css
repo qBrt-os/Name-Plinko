@@ -1,0 +1,177 @@
+/**
+ * Plinko Name Picker – Stake-Inspired Theme
+ * Color palette from Stake.com applied to a name picker game.
+ */
+
+:root {
+    --stake-bg: #1a2c38;
+    --stake-surface: #1a2c38;
+    --stake-surface-hover: #213746;
+    --stake-border: #2f4553;
+    --stake-border-subtle: rgba(255, 255, 255, 0.06);
+    --stake-text: #ffffff;
+    --stake-text-muted: #b1bad3;
+    --stake-text-faint: #557086;
+
+    --stake-green: #00e701;
+    --stake-green-hover: #1fff20;
+    --stake-green-text: #013e00;
+
+    --radius-sm: 6px;
+    --radius: 8px;
+    --radius-lg: 14px;
+    --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    background: #1a2c38;
+}
+
+body {
+    font-family: var(--font-family);
+    background: #1a2c38;
+    color: var(--stake-text);
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.site-header-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: #1a2c38;
+    z-index: 99999;
+    pointer-events: none;
+}
+
+main.stake-app {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background: var(--stake-bg);
+}
+
+/* Modals */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 20, 28, 0.82);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.modal-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-card {
+    background: var(--stake-surface);
+    border: 1px solid var(--stake-border);
+    border-radius: var(--radius-lg);
+    width: 90%;
+    max-width: 420px;
+    padding: 22px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    transform: translateY(10px) scale(0.97);
+    transition: transform 0.2s cubic-bezier(0.18, 1.25, 0.4, 1);
+}
+
+.modal-backdrop.visible .modal-card {
+    transform: translateY(0) scale(1);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--stake-border);
+}
+
+.modal-header h2 {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--stake-text);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--stake-text-muted);
+    font-size: 1.4rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close-btn:hover {
+    color: var(--stake-text);
+}
+
+.setting-group {
+    margin-bottom: 16px;
+}
+
+.setting-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--stake-text-muted);
+    margin-bottom: 8px;
+}
+
+.setting-slider {
+    width: 100%;
+    accent-color: var(--stake-green);
+    cursor: pointer;
+}
+
+/* Toast */
+.toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--stake-surface);
+    border: 1px solid var(--stake-border);
+    border-left: 4px solid var(--stake-green);
+    border-radius: var(--radius);
+    padding: 11px 22px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--stake-text);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+}
+
+.toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
