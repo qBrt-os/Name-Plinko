@@ -1158,6 +1158,73 @@
     };
 
     /* ========================================
+       COOKIE PERSISTENCE HELPERS
+       ======================================== */
+    var COOKIE_NAME = 'plinko_names';
+
+    function setCookie(name, value, days) {
+        try {
+            var expires = '';
+            if (days) {
+                var d = new Date();
+                d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = '; expires=' + d.toUTCString();
+            }
+            document.cookie = name + '=' + encodeURIComponent(value) + expires + '; path=/; SameSite=Lax';
+        } catch (e) { }
+        try {
+            if (window.localStorage) localStorage.setItem(name, value);
+        } catch (e) { }
+    }
+
+    function getCookie(name) {
+        try {
+            var nameEQ = name + '=';
+            var ca = document.cookie.split(';');
+            for (var i = 0; i < ca.length; i++) {
+                var c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) {
+                    return decodeURIComponent(c.substring(nameEQ.length, c.length));
+                }
+            }
+        } catch (e) { }
+        try {
+            if (window.localStorage) return localStorage.getItem(name);
+        } catch (e) { }
+        return null;
+    }
+
+    function deleteCookie(name) {
+        try {
+            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+        } catch (e) { }
+        try {
+            if (window.localStorage) localStorage.removeItem(name);
+        } catch (e) { }
+    }
+
+    function saveNamesToCookie(names) {
+        if (!names || names.length === 0) {
+            deleteCookie(COOKIE_NAME);
+        } else {
+            setCookie(COOKIE_NAME, JSON.stringify(names), 365);
+        }
+    }
+
+    function loadNamesFromCookie() {
+        var raw = getCookie(COOKIE_NAME);
+        if (!raw) return [];
+        try {
+            var parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed.map(function (s) { return String(s).trim(); }).filter(Boolean);
+        } catch (e) {
+            return raw.split(/[\r\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+        return [];
+    }
+
+    /* ========================================
        11. UI BINDINGS
        ======================================== */
     var DEFAULT_NAMES = [];
@@ -1283,11 +1350,21 @@
 
         subscribe(updateUI);
         createBoard();
+
+        // Restore saved names from cookies
+        var savedNames = loadNamesFromCookie();
+        if (savedNames.length > 0) {
+            el.classList.value = savedNames.join('\n');
+            initStudents(savedNames);
+            createBalls();
+            setState({ phase: PHASES.READY });
+        }
     }
 
     function syncFromNames() {
         if (state.phase === PHASES.DROPPING || state.phase === PHASES.COUNTDOWN) return;
         var names = parseClassList();
+        saveNamesToCookie(names);
         if (names.length === 0) {
             removeAllBalls();
             createBoard();
@@ -1313,12 +1390,14 @@
             var tmp = names[i]; names[i] = names[j]; names[j] = tmp;
         }
         el.classList.value = names.join('\n');
+        saveNamesToCookie(names);
         syncFromNames();
         showToast('Names shuffled!');
     }
 
     function clearNames() {
         el.classList.value = '';
+        saveNamesToCookie([]);
         Game.handleReset();
         showToast('Names cleared');
     }
