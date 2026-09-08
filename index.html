@@ -18,9 +18,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="css/main.css">
-    <link rel="stylesheet" href="css/board.css">
-    <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="css/main.css?v=2">
+    <link rel="stylesheet" href="css/board.css?v=2">
+    <link rel="stylesheet" href="css/sidebar.css?v=3">
 </head>
 <body>
     <div class="site-header-bar" id="site-header-bar" aria-hidden="true"></div>
@@ -84,7 +84,6 @@
                     <button type="button" class="stake-btn-green" id="drop-btn">
                         <span>Drop</span>
                     </button>
-                    <button type="button" class="stake-btn-secondary" id="next-btn" disabled>Next Round →</button>
                 </div>
 
                 <div class="button-row sub-actions">
@@ -111,7 +110,7 @@
                     <span class="stake-badge" id="results-count">0</span>
                 </div>
                 <ul class="results-list" id="results-list">
-                    <li class="no-results">No winners yet — press Drop!</li>
+                    <li class="no-results">No winners yet</li>
                 </ul>
                 <div class="button-row">
                     <button type="button" class="stake-btn-secondary full-width" id="copy-btn" disabled>Copy Order</button>
@@ -146,6 +145,6 @@
     </div>
 
     <!-- Application Bundle -->
-    <script src="js/app.js?v=8"></script>
+    <script src="js/app.js?v=10"></script>
 </body>
 </html>

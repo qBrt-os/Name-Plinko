@@ -1051,6 +1051,21 @@
         },
 
         handleDrop: function () {
+            if (state.phase === PHASES.WINNER_FOUND) {
+                var unpicked = getUnpicked();
+                if (unpicked.length === 0) {
+                    setState({ phase: PHASES.COMPLETE, currentWinner: null });
+                    return;
+                }
+                removeAllBalls();
+                createBoard();
+                createBalls();
+                setState({ phase: PHASES.DROPPING, currentWinner: null });
+                releaseBalls();
+                startWatchdog();
+                return;
+            }
+
             if (state.phase === PHASES.READY) {
                 setState({ phase: PHASES.DROPPING });
                 releaseBalls();
@@ -1083,18 +1098,7 @@
         },
 
         handleNext: function () {
-            if (state.phase !== PHASES.WINNER_FOUND) return;
-            removeAllBalls();
-
-            var unpicked = getUnpicked();
-            if (unpicked.length === 0) {
-                setState({ phase: PHASES.COMPLETE, currentWinner: null });
-                return;
-            }
-
-            createBoard();
-            createBalls();
-            setState({ phase: PHASES.READY, currentWinner: null });
+            Game.handleDrop();
         },
 
         handleRedo: function () {
@@ -1214,7 +1218,6 @@
         el = {
             classList: document.getElementById('class-list'),
             dropBtn: document.getElementById('drop-btn'),
-            nextBtn: document.getElementById('next-btn'),
             redoBtn: document.getElementById('redo-btn'),
             resetBtn: document.getElementById('reset-btn'),
             copyBtn: document.getElementById('copy-btn'),
@@ -1240,7 +1243,6 @@
 
         // Button handlers
         el.dropBtn.addEventListener('click', function () { ensureAudio(); Game.handleDrop(); });
-        el.nextBtn.addEventListener('click', function () { Game.handleNext(); });
         el.redoBtn.addEventListener('click', function () { Game.handleRedo(); });
         el.resetBtn.addEventListener('click', function () { Game.handleReset(); });
         el.copyBtn.addEventListener('click', handleCopy);
@@ -1432,29 +1434,24 @@
         if (el.shuffleBtn) el.shuffleBtn.disabled = s.phase === PHASES.DROPPING || s.phase === PHASES.WINNER_FOUND || unpickedCount <= 1;
         if (el.clearListBtn) el.clearListBtn.disabled = isRoundActive;
 
+        var dropSpan = el.dropBtn ? el.dropBtn.querySelector('span') : null;
+        if (dropSpan && dropSpan.textContent !== 'Drop') {
+            dropSpan.textContent = 'Drop';
+        }
+
         switch (s.phase) {
             case PHASES.IDLE:
-                el.dropBtn.disabled = false;
-                el.dropBtn.querySelector('span').textContent = hasResults ? 'Continue' : 'Drop';
-                el.nextBtn.disabled = true;
-                break;
             case PHASES.READY:
                 el.dropBtn.disabled = false;
-                el.dropBtn.querySelector('span').textContent = 'Drop';
-                el.nextBtn.disabled = true;
                 break;
             case PHASES.DROPPING:
                 el.dropBtn.disabled = true;
-                el.nextBtn.disabled = true;
                 break;
             case PHASES.WINNER_FOUND:
-                el.dropBtn.disabled = true;
-                el.nextBtn.disabled = false;
-                el.nextBtn.textContent = unpickedCount > 0 ? 'Next Round →' : 'Complete 🎉';
+                el.dropBtn.disabled = (unpickedCount === 0);
                 break;
             case PHASES.COMPLETE:
                 el.dropBtn.disabled = true;
-                el.nextBtn.disabled = true;
                 break;
         }
 
@@ -1465,7 +1462,7 @@
         if (el.resultsCount) el.resultsCount.textContent = s.results.length;
 
         if (s.results.length === 0) {
-            el.resultsList.innerHTML = '<li class="no-results">No winners yet — press Drop!</li>';
+            el.resultsList.innerHTML = '<li class="no-results">No winners yet</li>';
             el.copyBtn.disabled = true;
         } else {
             el.resultsList.innerHTML = s.results.map(function (r) {
