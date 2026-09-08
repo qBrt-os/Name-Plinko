@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#1a2c38">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a2c38">
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#1a2c38">
     <meta name="msapplication-navbutton-color" content="#1a2c38">
     <meta name="apple-mobile-web-app-status-bar-style" content="#1a2c38">
     <title>Name-Plinko</title>
@@ -31,10 +29,6 @@
         <div class="canvas-container">
             <div class="board-frame">
                 <canvas id="plinko-canvas" aria-label="Plinko Name Picker Board"></canvas>
-
-                <div class="countdown-overlay" id="countdown-overlay" aria-hidden="true">
-                    <span class="countdown-text" id="countdown-text">3</span>
-                </div>
 
                 <div class="winner-banner" id="winner-banner" aria-live="polite">
                     <div class="winner-badge" id="winner-badge">🏆 WINNER</div>
@@ -66,7 +60,10 @@
             <!-- Names Input -->
             <section class="sidebar-section">
                 <div class="section-header">
-                    <h2>Names List</h2>
+                    <div class="section-title-group">
+                        <h2>Names List</h2>
+                        <span class="stake-badge lock-badge" id="names-lock-badge" style="display: none;">🔒 Locked</span>
+                    </div>
                     <div class="util-actions">
                         <button type="button" class="util-chip" id="shuffle-btn" title="Shuffle names">Shuffle</button>
                         <button type="button" class="util-chip" id="clear-list-btn" title="Clear names">Clear</button>
@@ -149,6 +146,6 @@
     </div>
 
     <!-- Application Bundle -->
-    <script src="js/app.js?v=4"></script>
+    <script src="js/app.js?v=8"></script>
 </body>
 </html>

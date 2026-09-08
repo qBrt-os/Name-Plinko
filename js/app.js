@@ -24,7 +24,6 @@
     var PHASES = {
         IDLE: 'idle',
         READY: 'ready',
-        COUNTDOWN: 'countdown',
         DROPPING: 'dropping',
         WINNER_FOUND: 'winner-found',
         COMPLETE: 'complete'
@@ -35,7 +34,7 @@
        ======================================== */
     var state = {
         phase: PHASES.IDLE,
-        students: [],
+        players: [],
         results: [],
         currentWinner: null,
         settings: {
@@ -64,10 +63,10 @@
         return name.substring(0, 2).toUpperCase();
     }
 
-    function initStudents(names) {
-        state.students = names.map(function (raw, i) {
+    function initPlayers(names) {
+        state.players = names.map(function (raw, i) {
             return {
-                id: 's-' + i + '-' + Date.now(),
+                id: 'p-' + i + '-' + Date.now(),
                 name: raw.trim(),
                 initials: getInitials(raw),
                 color: COLORS[i % COLORS.length],
@@ -77,22 +76,22 @@
         });
         state.results = [];
         state.currentWinner = null;
-        state.phase = PHASES.IDLE;
+        state.phase = PHASES.READY;
         notify();
     }
 
-    function getUnpicked() { return state.students.filter(function (s) { return !s.picked; }); }
+    function getUnpicked() { return state.players.filter(function (p) { return !p.picked; }); }
 
-    function markPicked(student) {
-        student.picked = true;
+    function markPicked(player) {
+        player.picked = true;
         state.results.push({
-            id: student.id,
-            name: student.name,
-            initials: student.initials,
-            color: student.color,
+            id: player.id,
+            name: player.name,
+            initials: player.initials,
+            color: player.color,
             position: state.results.length + 1
         });
-        state.currentWinner = student.body;
+        state.currentWinner = player.body;
         state.phase = PHASES.WINNER_FOUND;
         notify();
     }
@@ -100,25 +99,35 @@
     function undoLast() {
         if (state.results.length === 0) return null;
         var last = state.results.pop();
-        var student = state.students.find(function (s) { return s.id === last.id; });
-        if (student) { student.picked = false; student.body = null; }
+        var player = state.players.find(function (p) { return p.id === last.id; });
+        if (player) { player.picked = false; player.body = null; }
         state.currentWinner = null;
-        state.phase = PHASES.IDLE;
+        state.phase = PHASES.READY;
         notify();
         return last;
     }
 
     function resetAll() {
-        state.phase = PHASES.IDLE;
-        state.students = [];
         state.results = [];
         state.currentWinner = null;
+        if (state.players.length > 0) {
+            state.players.forEach(function (p) {
+                p.picked = false;
+                p.body = null;
+            });
+            state.phase = PHASES.READY;
+        } else {
+            state.phase = PHASES.IDLE;
+        }
         notify();
     }
 
-    function namesChanged(newNames) {
-        if (state.students.length !== newNames.length) return true;
-        return !state.students.every(function (s, i) { return s.name === newNames[i]; });
+    function clearAll() {
+        state.phase = PHASES.IDLE;
+        state.players = [];
+        state.results = [];
+        state.currentWinner = null;
+        notify();
     }
 
     /* ========================================
@@ -174,28 +183,6 @@
         g.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
         osc.connect(g); g.connect(masterGain);
         osc.start(now); osc.stop(now + 0.12);
-    }
-
-    function playCountdownPip(isFinal) {
-        var ctx = ensureAudio();
-        if (!ctx || !state.settings.soundEnabled) return;
-        var now = ctx.currentTime;
-        var osc = ctx.createOscillator();
-        var g = ctx.createGain();
-        if (isFinal) {
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(880, now);
-            osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
-            g.gain.setValueAtTime(0.26, now);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-        } else {
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(520, now);
-            g.gain.setValueAtTime(0.2, now);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-        }
-        osc.connect(g); g.connect(masterGain);
-        osc.start(now); osc.stop(now + (isFinal ? 0.3 : 0.14));
     }
 
     function playFanfare() {
@@ -386,29 +373,6 @@
             collisionHandlers.forEach(function (h) { h(ev); });
         });
 
-        Matter.Events.on(engine, 'collisionActive', function (ev) {
-            ev.pairs.forEach(function (pair) {
-                var a = pair.bodyA, b = pair.bodyB;
-                var boundary = null, ball = null;
-                if (a.label === 'boundary' && b.label === 'ball') { boundary = a; ball = b; }
-                else if (b.label === 'boundary' && a.label === 'ball') { boundary = b; ball = a; }
-                if (boundary && ball) {
-                    var botY = (funnelPoints && funnelPoints.botBL) ? funnelPoints.botBL.y : 588;
-                    if (ball.position.y <= botY + 4) {
-                        var isLeft = ball.position.x < BOARD.W / 2;
-                        var bSpeed = 5.5 + (state.settings.bounciness || 0.55) * 4.0;
-                        var pushX = isLeft ? bSpeed : -bSpeed;
-                        if ((isLeft && ball.velocity.x < 3.2) || (!isLeft && ball.velocity.x > -3.2)) {
-                            Matter.Body.setVelocity(ball, {
-                                x: pushX,
-                                y: Math.min(ball.velocity.y * 0.4, 1.8)
-                            });
-                        }
-                    }
-                }
-            });
-        });
-
         startPhysicsLoop();
     }
 
@@ -420,12 +384,12 @@
         var midY = (fp && fp.midBL) ? fp.midBL.y : 96;
         var botY = (fp && fp.botBL) ? fp.botBL.y : 588;
         var topY = (fp && fp.topY !== undefined) ? fp.topY : 20;
-        var slope_dx = (fp && fp.midBL && fp.botBL && botY !== midY) ? (fp.botBL.x - fp.topBL.x) / (botY - midY) : 0.478;
+        var slope_dx = (fp && fp.slope_dx) ? fp.slope_dx : 0.478;
         var ballR = BOARD.ballRadius;
         var bounciness = state.settings.bounciness || 0.55;
         var bounceSpeed = 5.5 + bounciness * 4.0;
 
-        state.students.forEach(function (s) {
+        state.players.forEach(function (s) {
             if (!s.body || s.body.isStatic || s.body.hasFinished || s.picked) return;
             var bx = s.body.position.x;
             var by = s.body.position.y;
@@ -532,7 +496,6 @@
     var boardPegs = [];
     var boardWalls = [];
     var exitSensor = null;
-    var exitLabelPos = { x: 0, y: 0 };
     var funnelPoints = {
         topBL: { x: 0, y: 0 },
         topBR: { x: 0, y: 0 },
@@ -544,7 +507,8 @@
         exitR: { x: 0, y: 0 },
         topY: 20,
         rampEndY: 0,
-        cupFloorY: 0
+        cupFloorY: 0,
+        slope_dx: 0.478
     };
 
     function createBoard() {
@@ -613,7 +577,8 @@
             exitR: { x: exitR_x, y: rampEndY },
             topY: bT,
             rampEndY: rampEndY,
-            cupFloorY: cupFloorY
+            cupFloorY: cupFloorY,
+            slope_dx: slope_dx
         };
 
         // Create pegs with 100% equal vertical distance across all rows; last row has exactly 2 pegs
@@ -737,7 +702,6 @@
         exitSensor = Matter.Bodies.rectangle(centerX, rampEndY + 6, exitGap - 2, 12, {
             isStatic: true, isSensor: true, label: 'exit'
         });
-        exitLabelPos = { x: centerX, y: rampEndY - 8 };
         addBodies(exitSensor);
     }
 
@@ -759,7 +723,7 @@
         var numRows = count > 14 ? 3 : (count > 7 ? 2 : 1);
         var perRow = Math.ceil(count / numRows);
 
-        unpicked.forEach(function (student, i) {
+        unpicked.forEach(function (player, i) {
             var rowIndex = Math.floor(i / perRow);
             var colIndex = i % perRow;
             var inRow = (rowIndex === numRows - 1) ? (count - rowIndex * perRow) : perRow;
@@ -780,15 +744,15 @@
                 restitution: Math.min(0.55, state.settings.bounciness || 0.55),
                 friction: 0.02
             });
-            ball.studentName = student.name;
-            ball.studentInitials = student.initials;
-            ball.studentColor = student.color;
+            ball.playerName = player.name;
+            ball.playerInitials = player.initials;
+            ball.playerColor = player.color;
             ball.isFaded = false;
             ball.hasFinished = false;
 
             Matter.Body.setStatic(ball, true);
             addBodies(ball);
-            student.body = ball;
+            player.body = ball;
         });
     }
 
@@ -796,7 +760,7 @@
         var unpicked = getUnpicked();
         if (unpicked.length === 0) return;
 
-        // Reset frame time to eliminate any delta accumulation during countdown
+        // Reset frame time to eliminate any delta accumulation before drop
         lastFrameTime = performance.now();
         accumulator = 0;
 
@@ -813,7 +777,7 @@
     }
 
     function fadeBallsExcept(winnerBody) {
-        state.students.forEach(function (s) {
+        state.players.forEach(function (s) {
             if (s.body && s.body !== winnerBody && !s.picked) {
                 s.body.isFaded = true;
             }
@@ -821,13 +785,13 @@
     }
 
     function removeAllBalls() {
-        state.students.forEach(function (s) {
+        state.players.forEach(function (s) {
             if (s.body) { removeBody(s.body); s.body = null; }
         });
     }
 
-    function findStudentByBody(b) {
-        return state.students.find(function (s) { return s.body === b; });
+    function findPlayerByBody(b) {
+        return state.players.find(function (p) { return p.body === b; });
     }
 
     /* ========================================
@@ -870,7 +834,6 @@
         canvas = cvs;
         ctx = canvas.getContext('2d');
         resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
         startRenderLoop();
     }
 
@@ -1001,9 +964,9 @@
 
         // Draw balls — flat style: colored outline + semi-transparent fill
         var ballR = BOARD.ballRadius;
-        state.students.forEach(function (student) {
-            if (!student.body) return;
-            var ball = student.body;
+        state.players.forEach(function (player) {
+            if (!player.body) return;
+            var ball = player.body;
             var bx = ball.position.x, by = ball.position.y;
             var isWinner = (ball === state.currentWinner);
             var isFaded = ball.isFaded;
@@ -1018,7 +981,7 @@
             if (isWinner) {
                 var pulse = 1.4 + 0.15 * Math.sin(performance.now() / 200);
                 var wGlow = ctx.createRadialGradient(bx, by, ballR * 0.5, bx, by, ballR * pulse);
-                wGlow.addColorStop(0, student.color);
+                wGlow.addColorStop(0, player.color);
                 wGlow.addColorStop(0.5, 'rgba(0, 231, 1, 0.3)');
                 wGlow.addColorStop(1, 'transparent');
                 ctx.fillStyle = wGlow;
@@ -1026,13 +989,13 @@
             }
 
             // Semi-transparent fill
-            ctx.fillStyle = student.color;
+            ctx.fillStyle = player.color;
             ctx.globalAlpha = isFaded ? 0.1 : 0.25;
             ctx.beginPath(); ctx.arc(bx, by, ballR, 0, Math.PI * 2); ctx.fill();
 
             // Solid colored outline ring
             ctx.globalAlpha = isFaded ? 0.2 : 1;
-            ctx.strokeStyle = student.color;
+            ctx.strokeStyle = player.color;
             ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.arc(bx, by, ballR, 0, Math.PI * 2); ctx.stroke();
 
@@ -1042,7 +1005,7 @@
             ctx.font = '800 ' + Math.max(9, Math.round(ballR * 0.95)) + 'px "Plus Jakarta Sans", system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(student.initials, bx, by + 0.5);
+            ctx.fillText(player.initials, bx, by + 0.5);
 
             ctx.restore();
         });
@@ -1074,10 +1037,10 @@
 
                 if (ball && exit && !ball.hasFinished) {
                     ball.hasFinished = true;
-                    var student = findStudentByBody(ball);
-                    if (student) {
+                    var player = findPlayerByBody(ball);
+                    if (player) {
                         playExitHit();
-                        markPicked(student);
+                        markPicked(player);
                         fadeBallsExcept(ball);
                         playFanfare();
                         stopWatchdog();
@@ -1089,12 +1052,9 @@
 
         handleDrop: function () {
             if (state.phase === PHASES.READY) {
-                setState({ phase: PHASES.COUNTDOWN });
-                runCountdown(function () {
-                    setState({ phase: PHASES.DROPPING });
-                    releaseBalls();
-                    startWatchdog();
-                });
+                setState({ phase: PHASES.DROPPING });
+                releaseBalls();
+                startWatchdog();
                 return;
             }
             if (state.phase !== PHASES.IDLE) return;
@@ -1105,8 +1065,8 @@
                 return;
             }
 
-            if (state.students.length === 0 || namesChanged(names)) {
-                initStudents(names);
+            if (state.players.length === 0) {
+                initPlayers(names);
             }
 
             var unpicked = getUnpicked();
@@ -1117,7 +1077,9 @@
 
             createBoard();
             createBalls();
-            setState({ phase: PHASES.READY });
+            setState({ phase: PHASES.DROPPING });
+            releaseBalls();
+            startWatchdog();
         },
 
         handleNext: function () {
@@ -1130,14 +1092,13 @@
                 return;
             }
 
-            resizeCanvas();
             createBoard();
             createBalls();
             setState({ phase: PHASES.READY, currentWinner: null });
         },
 
         handleRedo: function () {
-            if (state.phase === PHASES.COUNTDOWN || state.phase === PHASES.DROPPING) return;
+            if (state.phase === PHASES.DROPPING) return;
             stopWatchdog();
             removeAllBalls();
             undoLast();
@@ -1151,9 +1112,29 @@
             confettiList = [];
             sparkList = [];
             wallGlowList = [];
-            removeAllBalls();
-            createBoard();
-            resetAll();
+            var names = parseClassList();
+            if (names.length > 0) {
+                if (state.players.length === 0) {
+                    initPlayers(names);
+                } else {
+                    state.players.forEach(function (p) {
+                        p.picked = false;
+                        p.body = null;
+                    });
+                    state.results = [];
+                    state.currentWinner = null;
+                    state.phase = PHASES.READY;
+                }
+                removeAllBalls();
+                createBoard();
+                createBalls();
+                notify();
+                showToast('Game reset');
+            } else {
+                removeAllBalls();
+                createBoard();
+                clearAll();
+            }
         }
     };
 
@@ -1227,8 +1208,6 @@
     /* ========================================
        11. UI BINDINGS
        ======================================== */
-    var DEFAULT_NAMES = [];
-
     var el = {};
 
     function initUI() {
@@ -1243,12 +1222,8 @@
             resultsCount: document.getElementById('results-count'),
             playersCount: document.getElementById('players-count'),
             rosterList: document.getElementById('roster-list'),
-            countdownOverlay: document.getElementById('countdown-overlay'),
-            countdownText: document.getElementById('countdown-text'),
             winnerBanner: document.getElementById('winner-banner'),
-            winnerBadge: document.getElementById('winner-badge'),
             winnerName: document.getElementById('winner-name'),
-            winnerLabel: document.getElementById('winner-label'),
             toast: document.getElementById('toast'),
             soundToggleBtn: document.getElementById('sound-toggle-btn'),
             settingsBtn: document.getElementById('settings-btn'),
@@ -1259,6 +1234,7 @@
             bouncinessSlider: document.getElementById('bounciness-slider'),
             shuffleBtn: document.getElementById('shuffle-btn'),
             clearListBtn: document.getElementById('clear-list-btn'),
+            namesLockBadge: document.getElementById('names-lock-badge'),
             canvas: document.getElementById('plinko-canvas')
         };
 
@@ -1290,7 +1266,7 @@
             boardWalls.forEach(function (w) {
                 if (w.label === 'boundary') w.restitution = Math.min(0.95, Math.max(state.settings.bounciness * 1.3, 0.85));
             });
-            state.students.forEach(function (s) {
+            state.players.forEach(function (s) {
                 if (s.body) s.body.restitution = Math.min(0.65, state.settings.bounciness);
             });
         });
@@ -1303,8 +1279,8 @@
             var sy = BOARD.H / rect.height;
             var cx = (e.clientX - rect.left) * sx;
             var cy = (e.clientY - rect.top) * sy;
-            for (var i = 0; i < state.students.length; i++) {
-                var s = state.students[i];
+            for (var i = 0; i < state.players.length; i++) {
+                var s = state.players[i];
                 if (!s.body || s.picked || s.body.isStatic) continue;
                 var d = Math.hypot(cx - s.body.position.x, cy - s.body.position.y);
                 if (d < BOARD.ballRadius * 2.5) {
@@ -1355,23 +1331,23 @@
         var savedNames = loadNamesFromCookie();
         if (savedNames.length > 0) {
             el.classList.value = savedNames.join('\n');
-            initStudents(savedNames);
+            initPlayers(savedNames);
             createBalls();
             setState({ phase: PHASES.READY });
         }
     }
 
     function syncFromNames() {
-        if (state.phase === PHASES.DROPPING || state.phase === PHASES.COUNTDOWN) return;
+        if (state.phase === PHASES.DROPPING || state.phase === PHASES.WINNER_FOUND || state.results.length > 0) return;
         var names = parseClassList();
         saveNamesToCookie(names);
         if (names.length === 0) {
             removeAllBalls();
             createBoard();
-            resetAll();
+            clearAll();
             return;
         }
-        initStudents(names);
+        initPlayers(names);
         removeAllBalls();
         createBoard();
         createBalls();
@@ -1383,52 +1359,55 @@
     }
 
     function shuffleNames() {
+        if (state.phase === PHASES.DROPPING || state.phase === PHASES.WINNER_FOUND) return;
+
         var names = parseClassList();
         if (names.length <= 1) return;
-        for (var i = names.length - 1; i > 0; i--) {
-            var j = Math.floor(Math.random() * (i + 1));
-            var tmp = names[i]; names[i] = names[j]; names[j] = tmp;
+
+        // Ensure players are initialized if not already
+        if (state.players.length === 0) {
+            initPlayers(names);
         }
-        el.classList.value = names.join('\n');
-        saveNamesToCookie(names);
-        syncFromNames();
+
+        // Shuffle unpicked players without disturbing already-picked winners or results
+        var unpicked = state.players.filter(function (p) { return !p.picked; });
+        if (unpicked.length <= 1) return;
+
+        for (var i = unpicked.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var tmp = unpicked[i];
+            unpicked[i] = unpicked[j];
+            unpicked[j] = tmp;
+        }
+
+        var uIdx = 0;
+        for (var k = 0; k < state.players.length; k++) {
+            if (!state.players[k].picked) {
+                state.players[k] = unpicked[uIdx++];
+            }
+        }
+
+        // Update textarea and cookies with the current player order
+        var orderedNames = state.players.map(function (p) { return p.name; });
+        if (el.classList) el.classList.value = orderedNames.join('\n');
+        saveNamesToCookie(orderedNames);
+
+        // Update staged balls if in READY phase
+        if (state.phase === PHASES.READY) {
+            removeAllBalls();
+            createBalls();
+        }
+
+        notify();
         showToast('Names shuffled!');
     }
 
     function clearNames() {
+        if (state.results.length > 0 || state.phase === PHASES.DROPPING || state.phase === PHASES.WINNER_FOUND) return;
         el.classList.value = '';
         saveNamesToCookie([]);
         Game.handleReset();
         showToast('Names cleared');
-    }
-
-    function runCountdown(cb) {
-        var count = 3;
-        showCountdownNum(count);
-        var timer = setInterval(function () {
-            count--;
-            if (count > 0) {
-                showCountdownNum(count);
-            } else if (count === 0) {
-                showCountdownNum('Drop!');
-            } else {
-                clearInterval(timer);
-                el.countdownOverlay.classList.remove('visible');
-                lastFrameTime = performance.now();
-                accumulator = 0;
-                cb();
-            }
-        }, 650);
-    }
-
-    function showCountdownNum(val) {
-        el.countdownText.textContent = val;
-        el.countdownText.classList.remove('pop');
-        requestAnimationFrame(function () {
-            el.countdownText.classList.add('pop');
-        });
-        el.countdownOverlay.classList.add('visible');
-        playCountdownPip(val === 'Drop!');
     }
 
     function updateUI(s) {
@@ -1441,10 +1420,17 @@
             el.winnerBanner.classList.remove('visible');
         }
 
-        // Buttons
-        var unpickedCount = s.students.filter(function (st) { return !st.picked; }).length;
+        // Buttons & Round Lock
+        var unpickedCount = s.players.filter(function (st) { return !st.picked; }).length;
         var hasResults = s.results.length > 0;
-        el.redoBtn.disabled = !hasResults || s.phase === PHASES.COUNTDOWN || s.phase === PHASES.DROPPING;
+        var isRoundActive = hasResults || s.phase === PHASES.DROPPING || s.phase === PHASES.WINNER_FOUND;
+
+        if (el.classList) el.classList.readOnly = isRoundActive;
+        if (el.namesLockBadge) el.namesLockBadge.style.display = isRoundActive ? 'inline-block' : 'none';
+
+        el.redoBtn.disabled = !hasResults || s.phase === PHASES.DROPPING;
+        if (el.shuffleBtn) el.shuffleBtn.disabled = s.phase === PHASES.DROPPING || s.phase === PHASES.WINNER_FOUND || unpickedCount <= 1;
+        if (el.clearListBtn) el.clearListBtn.disabled = isRoundActive;
 
         switch (s.phase) {
             case PHASES.IDLE:
@@ -1457,7 +1443,6 @@
                 el.dropBtn.querySelector('span').textContent = 'Drop';
                 el.nextBtn.disabled = true;
                 break;
-            case PHASES.COUNTDOWN:
             case PHASES.DROPPING:
                 el.dropBtn.disabled = true;
                 el.nextBtn.disabled = true;
@@ -1496,17 +1481,17 @@
 
     function updateRoster() {
         if (!el.rosterList) return;
-        if (state.students.length === 0) {
+        if (state.players.length === 0) {
             el.rosterList.innerHTML = '<div class="no-results">Enter names above</div>';
             if (el.playersCount) el.playersCount.textContent = '0';
             return;
         }
-        if (el.playersCount) el.playersCount.textContent = state.students.length;
-        el.rosterList.innerHTML = state.students.map(function (s) {
+        if (el.playersCount) el.playersCount.textContent = state.players.length;
+        el.rosterList.innerHTML = state.players.map(function (s) {
             var cls = 'roster-chip' + (s.picked ? ' picked' : '');
             return '<div class="' + cls + '">' +
                 '<span class="roster-color-dot" style="background:' + s.color + '">' + esc(s.initials) + '</span>' +
-                '<span>' + esc(s.name) + '</span>' +
+                '<span class="roster-name">' + esc(s.name) + '</span>' +
                 '</div>';
         }).join('');
     }
@@ -1564,22 +1549,17 @@
         showToast(state.settings.soundEnabled ? 'Sound On 🔊' : 'Sound Off 🔇');
     }
 
-    function toggleFullscreen() {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(function () { });
-        } else {
-            document.exitFullscreen().catch(function () { });
-        }
-    }
-
     function openSettings(open) {
         el.settingsModal.classList.toggle('visible', open);
     }
 
     function esc(str) {
-        var d = document.createElement('div');
-        d.textContent = str;
-        return d.innerHTML;
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     /* ========================================
@@ -1589,15 +1569,10 @@
         initPhysics();
         var cvs = document.getElementById('plinko-canvas');
         initRenderer(cvs);
-        createBoard();
         Game.init();
         initUI();
 
-        var unlock = function () {
-            ensureAudio();
-            window.removeEventListener('pointerdown', unlock);
-            window.removeEventListener('keydown', unlock);
-        };
+        var unlock = function () { ensureAudio(); };
         window.addEventListener('pointerdown', unlock, { once: true });
         window.addEventListener('keydown', unlock, { once: true });
 

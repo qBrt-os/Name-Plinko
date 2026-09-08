@@ -38,40 +38,6 @@
     height: 100%;
 }
 
-/* Countdown Overlay */
-.countdown-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(15, 33, 46, 0.85);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease;
-    z-index: 20;
-}
-
-.countdown-overlay.visible {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.countdown-text {
-    font-size: clamp(5rem, 15vw, 9rem);
-    font-weight: 900;
-    color: var(--stake-green);
-    text-shadow: 0 0 35px rgba(0, 231, 1, 0.4);
-}
-
-.countdown-text.pop {
-    animation: countdown-bounce 0.45s cubic-bezier(0.18, 1.4, 0.4, 1);
-}
-
-@keyframes countdown-bounce {
-    0% { transform: scale(2); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-}
 
 /* Winner Celebration Banner */
 .winner-banner {
