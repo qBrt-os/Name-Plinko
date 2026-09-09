@@ -21,6 +21,29 @@
         '#f15bb5', '#fee440', '#70d6ff', '#52b788', '#ff9770'
     ];
 
+    function hexToRgb(hex) {
+        if (!hex || typeof hex !== 'string') return { r: 255, g: 255, b: 255 };
+        var clean = hex.replace('#', '');
+        if (clean.length === 3) clean = clean[0] + clean[0] + clean[1] + clean[1] + clean[2] + clean[2];
+        var num = parseInt(clean, 16);
+        if (isNaN(num)) return { r: 255, g: 255, b: 255 };
+        return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    }
+
+    function hexToRgba(hex, a) {
+        var rgb = hexToRgb(hex);
+        return 'rgba(' + rgb.r + ', ' + rgb.g + ', ' + rgb.b + ', ' + Math.max(0, Math.min(1, a)) + ')';
+    }
+
+    function lerpColor(c1, c2, t) {
+        var rgb1 = hexToRgb(c1);
+        var rgb2 = hexToRgb(c2);
+        var r = Math.round(rgb1.r + (rgb2.r - rgb1.r) * t);
+        var g = Math.round(rgb1.g + (rgb2.g - rgb1.g) * t);
+        var b = Math.round(rgb1.b + (rgb2.b - rgb1.b) * t);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
     var PHASES = {
         IDLE: 'idle',
         READY: 'ready',
@@ -215,6 +238,36 @@
     var confettiList = [];
     var sparkList = [];
     var wallGlowList = [];
+    var pegPulses = [];
+
+    var finishGate = {
+        hitTime: 0,
+        hitColor: null,
+        hitX: 400
+    };
+
+    function triggerFinishGate(color, hitX) {
+        finishGate.hitTime = performance.now();
+        finishGate.hitColor = color || '#ffffff';
+        finishGate.hitX = (hitX !== undefined) ? hitX : (BOARD.W / 2);
+    }
+
+    function triggerPegPulse(peg, color) {
+        var now = performance.now();
+        var c = color || '#ffffff';
+        if (peg && peg.pegData) {
+            peg.pegData.hitTime = now;
+            peg.pegData.hitColor = c;
+        }
+        pegPulses.push({
+            x: peg.position.x,
+            y: peg.position.y,
+            color: c,
+            startTime: now,
+            duration: 550
+        });
+        if (pegPulses.length > 80) pegPulses.shift();
+    }
 
     function addWallGlow(x, y) {
         if (wallGlowList.length > 20) wallGlowList.shift();
@@ -257,6 +310,12 @@
     }
 
     function updateEffects() {
+        var now = performance.now();
+        for (var pIdx = pegPulses.length - 1; pIdx >= 0; pIdx--) {
+            if (now - pegPulses[pIdx].startTime >= pegPulses[pIdx].duration) {
+                pegPulses.splice(pIdx, 1);
+            }
+        }
         for (var i = confettiList.length - 1; i >= 0; i--) {
             var p = confettiList[i];
             p.x += p.vx; p.y += p.vy;
@@ -281,11 +340,10 @@
     function drawEffects(c) {
         wallGlowList.forEach(function (g) {
             c.save();
-            var radius = 22 + (1 - g.life) * 16;
-            var wGlow = c.createRadialGradient(g.x, g.y, 2, g.x, g.y, radius);
-            wGlow.addColorStop(0, 'rgba(255, 255, 255, ' + (0.95 * g.life) + ')');
-            wGlow.addColorStop(0.35, 'rgba(0, 231, 1, ' + (0.7 * g.life) + ')');
-            wGlow.addColorStop(0.75, 'rgba(0, 231, 1, ' + (0.25 * g.life) + ')');
+            var radius = 16 + (1 - g.life) * 12;
+            var wGlow = c.createRadialGradient(g.x, g.y, 1, g.x, g.y, radius);
+            wGlow.addColorStop(0, 'rgba(255, 255, 255, ' + (0.8 * g.life) + ')');
+            wGlow.addColorStop(0.5, 'rgba(255, 255, 255, ' + (0.3 * g.life) + ')');
             wGlow.addColorStop(1, 'transparent');
             c.fillStyle = wGlow;
             c.beginPath(); c.arc(g.x, g.y, radius, 0, Math.PI * 2); c.fill();
@@ -349,24 +407,22 @@
                 else if (b.label === 'boundary' && a.label === 'ball') { boundary = b; ball = a; }
 
                 if (peg && ball) {
-                    if (peg.pegData) peg.pegData.glow = 1.0;
                     playTick();
-                    addSparks(peg.position.x, peg.position.y, '#ffffff');
+                    triggerPegPulse(peg, ball.playerColor);
                 }
 
                 if (boundary && ball) {
-                    var botY = (funnelPoints && funnelPoints.botBL) ? funnelPoints.botBL.y : 588;
+                    var botY = (funnelPoints && funnelPoints.botBL) ? funnelPoints.botBL.y : 600;
                     if (ball.position.y <= botY + 4) {
-                        var isLeft = ball.position.x < BOARD.W / 2;
-                        var bSpeed = 5.5 + (state.settings.bounciness || 0.55) * 4.0;
-                        var pushX = isLeft ? bSpeed : -bSpeed;
-                        Matter.Body.setVelocity(ball, {
-                            x: pushX,
-                            y: Math.min(ball.velocity.y * 0.4, 1.8)
-                        });
-                        addSparks(ball.position.x, ball.position.y, '#ffffff');
                         addWallGlow(ball.position.x, ball.position.y);
                         playTick();
+                        // Moderate inward deflection so balls bounce into the peg field instead of sliding
+                        var isLeft = ball.position.x < (BOARD.W / 2);
+                        var pushX = isLeft ? 3.2 : -3.2;
+                        Matter.Body.setVelocity(ball, {
+                            x: pushX,
+                            y: Math.max(0.6, Math.min(ball.velocity.y * 0.65, 2.2))
+                        });
                     }
                 }
             });
@@ -380,14 +436,12 @@
         var maxVel = 12.0;
         var now = performance.now();
         var fp = funnelPoints;
-        var topBL_x = (fp && fp.topBL) ? fp.topBL.x : 85;
-        var midY = (fp && fp.midBL) ? fp.midBL.y : 96;
-        var botY = (fp && fp.botBL) ? fp.botBL.y : 588;
+        var topBL_x = (fp && fp.topBL) ? fp.topBL.x : 93;
+        var midY = (fp && fp.midBL) ? fp.midBL.y : 90;
+        var botY = (fp && fp.botBL) ? fp.botBL.y : 600;
         var topY = (fp && fp.topY !== undefined) ? fp.topY : 20;
-        var slope_dx = (fp && fp.slope_dx) ? fp.slope_dx : 0.478;
+        var slope_dx = (fp && fp.slope_dx) ? fp.slope_dx : 0.484;
         var ballR = BOARD.ballRadius;
-        var bounciness = state.settings.bounciness || 0.55;
-        var bounceSpeed = 5.5 + bounciness * 4.0;
 
         state.players.forEach(function (s) {
             if (!s.body || s.body.isStatic || s.body.hasFinished || s.picked) return;
@@ -402,32 +456,30 @@
                 return;
             }
 
-            // Continuous active wall bounce in the peg / funnel field
+            // Anti-wedging wall separation in the peg / funnel field
             if (by >= topY && by <= botY + 4) {
                 var wallL = (by < midY) ? topBL_x : (topBL_x + slope_dx * (by - midY));
                 var wallR = BOARD.W - wallL;
 
-                // Left wall contact / sliding
-                if (bx - ballR <= wallL + 3.0) {
-                    if (vx < 3.5) {
-                        Matter.Body.setPosition(s.body, { x: wallL + ballR + 3.5, y: by });
-                        Matter.Body.setVelocity(s.body, { x: bounceSpeed, y: Math.min(vy * 0.4, 1.8) });
-                        addSparks(wallL, by, '#ffffff');
+                // Left wall contact / sliding - prevent sliding along wall, deflect inward moderately
+                if (bx - ballR <= wallL + 2.0) {
+                    Matter.Body.setPosition(s.body, { x: wallL + ballR + 2.0, y: by });
+                    if (vx < 1.0) {
+                        Matter.Body.setVelocity(s.body, { x: 3.0, y: Math.min(vy * 0.65, 2.4) });
                         addWallGlow(wallL, by);
-                        if (now - (s.body.lastWallTick || 0) > 80) {
+                        if (now - (s.body.lastWallTick || 0) > 120) {
                             playTick();
                             s.body.lastWallTick = now;
                         }
                     }
                 }
-                // Right wall contact / sliding
-                else if (bx + ballR >= wallR - 3.0) {
-                    if (vx > -3.5) {
-                        Matter.Body.setPosition(s.body, { x: wallR - ballR - 3.5, y: by });
-                        Matter.Body.setVelocity(s.body, { x: -bounceSpeed, y: Math.min(vy * 0.4, 1.8) });
-                        addSparks(wallR, by, '#ffffff');
+                // Right wall contact / sliding - prevent sliding along wall, deflect inward moderately
+                else if (bx + ballR >= wallR - 2.0) {
+                    Matter.Body.setPosition(s.body, { x: wallR - ballR - 2.0, y: by });
+                    if (vx > -1.0) {
+                        Matter.Body.setVelocity(s.body, { x: -3.0, y: Math.min(vy * 0.65, 2.4) });
                         addWallGlow(wallR, by);
-                        if (now - (s.body.lastWallTick || 0) > 80) {
+                        if (now - (s.body.lastWallTick || 0) > 120) {
                             playTick();
                             s.body.lastWallTick = now;
                         }
@@ -484,12 +536,12 @@
     var BOARD = {
         W: 800,
         H: 700,
-        pegRadius: 4,
-        ballRadius: 14.5,
-        rows: 9,
-        pegSpacing: 54,
-        topPegY: 110,
-        exitGap: 80,
+        pegRadius: 3,
+        ballRadius: 11,
+        rows: 12,
+        pegSpacing: 42,
+        topPegY: 104,
+        exitGap: 64,
         baseGravity: 0.52
     };
 
@@ -508,7 +560,7 @@
         topY: 20,
         rampEndY: 0,
         cupFloorY: 0,
-        slope_dx: 0.478
+        slope_dx: 0.484
     };
 
     function createBoard() {
@@ -528,20 +580,20 @@
 
         var centerX = W / 2;
         var topPegY = BOARD.topPegY;
-        var scale = Math.min(W / 800, H / 700);
+        var scale = 1.0;
 
         // Visible collection cup parameters at bottom of board (entirely within canvas)
         var cupFloorY = H - 24;
-        var cupDepth = Math.max(26, Math.round(30 * scale));
+        var cupDepth = 30;
         var rampEndY = cupFloorY - cupDepth;
-        var rampHeight = Math.max(45, Math.round(58 * scale));
+        var rampHeight = 46;
         var botY = rampEndY - rampHeight;
-        var bottomPegGap = Math.max(38, Math.round(42 * scale));
+        var bottomPegGap = 34;
         var bottomPegY = botY - bottomPegGap;
         var rowSpacingY = (bottomPegY - topPegY) / (rows - 1);
 
         // Generous wall clearance so balls never wedge against outer walls
-        var wallOffset = Math.max(44, Math.round(BOARD.ballRadius * 3.1));
+        var wallOffset = 34;
 
         var topPegs = 3 + (rows - 1);
         var topRowW = (topPegs - 1) * spacing;
@@ -581,10 +633,9 @@
             slope_dx: slope_dx
         };
 
-        // Create pegs with 100% equal vertical distance across all rows; last row has exactly 2 pegs
+        // Create pegs with 100% equal vertical distance across all rows (down to 3 pegs in the last row)
         for (var r = 0; r < rows; r++) {
-            var isLast = (r === rows - 1);
-            var count = isLast ? 2 : (topPegs - r);
+            var count = topPegs - r;
             var rowW = (count - 1) * spacing;
             var startX = centerX - rowW / 2;
             var y = topPegY + r * rowSpacingY;
@@ -607,7 +658,7 @@
         var wallThick = 36;
         var walls = [];
 
-        var wallRestitution = Math.min(0.95, Math.max(restitution * 1.3, 0.85));
+        var wallRestitution = restitution;
 
         // 1. Top vertical side walls
         var topVertH = midY - bT;
@@ -735,7 +786,7 @@
             var rowStartX = centerX - rowW / 2;
 
             var x = inRow <= 1 ? centerX : (rowStartX + colIndex * spacing);
-            var y = (funnelPoints.topY || 20) + 34 + rowIndex * (ballR * 2.3);
+            var y = (funnelPoints.topY || 20) + 20 + rowIndex * (ballR * 2.2);
 
             var ball = Matter.Bodies.circle(x, y, ballR, {
                 label: 'ball',
@@ -788,6 +839,10 @@
         state.players.forEach(function (s) {
             if (s.body) { removeBody(s.body); s.body = null; }
         });
+        pegPulses.length = 0;
+        wallGlowList.length = 0;
+        finishGate.hitTime = 0;
+        finishGate.hitColor = null;
     }
 
     function findPlayerByBody(b) {
@@ -839,26 +894,37 @@
 
     function resizeCanvas() {
         if (!canvas) return;
-        var container = canvas.parentElement;
-        var cw = container.clientWidth;
-        var ch = container.clientHeight;
+        var frame = canvas.parentElement;
+        if (!frame) return;
+        var container = frame.parentElement;
+        if (!container) return;
 
-        BOARD.W = cw;
-        BOARD.H = ch;
+        var cs = window.getComputedStyle(container);
+        var padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+        var padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        var availW = container.clientWidth - padX;
+        var availH = container.clientHeight - padY;
+        if (availW <= 0 || availH <= 0) return;
 
-        var scale = Math.min(cw / 800, ch / 700);
-        BOARD.pegRadius = Math.max(3, Math.round(4 * scale));
-        BOARD.ballRadius = Math.max(11, Math.round(14.5 * scale));
-        BOARD.pegSpacing = Math.max(40, Math.round(54 * scale));
-        BOARD.topPegY = Math.max(90, Math.round(110 * scale));
-        BOARD.exitGap = Math.max(70, Math.round(80 * scale));
-        BOARD.rows = Math.max(8, Math.min(10, Math.floor(ch / 75)));
+        var targetAR = BOARD.W / BOARD.H;
+        var frameW, frameH;
+
+        if (availW / availH > targetAR) {
+            frameH = availH;
+            frameW = Math.round(frameH * targetAR);
+        } else {
+            frameW = availW;
+            frameH = Math.round(frameW / targetAR);
+        }
+
+        frame.style.width = frameW + 'px';
+        frame.style.height = frameH + 'px';
 
         dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.round(cw * dpr);
-        canvas.height = Math.round(ch * dpr);
-        canvas.style.width = cw + 'px';
-        canvas.style.height = ch + 'px';
+        canvas.width = Math.round(frameW * dpr);
+        canvas.height = Math.round(frameH * dpr);
+        canvas.style.width = frameW + 'px';
+        canvas.style.height = frameH + 'px';
     }
 
     function startRenderLoop() {
@@ -877,7 +943,8 @@
         var H = BOARD.H;
 
         ctx.save();
-        ctx.scale(dpr, dpr);
+        var renderScale = (canvas.width / dpr) / W;
+        ctx.scale(renderScale * dpr, renderScale * dpr);
 
         // Canvas background - smooth dark slate that matches the frame
         ctx.fillStyle = '#14232e';
@@ -895,8 +962,8 @@
         if (fp && fp.topBL.x !== 0) {
             var cornerR = 12;
 
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.lineWidth = 1.6;
             ctx.lineJoin = 'round';
             ctx.lineCap = 'round';
 
@@ -920,45 +987,122 @@
             ctx.stroke();
         }
 
-        // Draw exit portal with subtle green glow (no text)
-        if (funnelPoints && funnelPoints.rampEndY) {
-            var ex = W / 2;
-            var ey = (funnelPoints.rampEndY + funnelPoints.cupFloorY) / 2;
-            var eglow = ctx.createRadialGradient(ex, ey, 4, ex, ey, 42);
-            eglow.addColorStop(0, 'rgba(0, 231, 1, 0.35)');
-            eglow.addColorStop(0.5, 'rgba(0, 231, 1, 0.12)');
-            eglow.addColorStop(1, 'transparent');
-            ctx.fillStyle = eglow;
-            ctx.beginPath(); ctx.arc(ex, ey, 42, 0, Math.PI * 2); ctx.fill();
-        }
+        var now = performance.now();
 
-        // Draw pegs
-        boardPegs.forEach(function (peg) {
-            var px = peg.position.x, py = peg.position.y;
-            var data = peg.pegData || { glow: 0 };
-            var pr = BOARD.pegRadius;
+        // Draw clean finish line across exit opening
+        if (funnelPoints && funnelPoints.rampEndY && funnelPoints.exitL && funnelPoints.exitR) {
+            var x1 = funnelPoints.exitL.x;
+            var x2 = funnelPoints.exitR.x;
+            var gy = funnelPoints.rampEndY;
 
             ctx.save();
-            // Glow halo on hit
-            if (data.glow > 0.02) {
-                var gr = pr + data.glow * 12;
-                var halo = ctx.createRadialGradient(px, py, pr * 0.2, px, py, gr);
-                halo.addColorStop(0, 'rgba(255,255,255,0.9)');
-                halo.addColorStop(0.4, 'rgba(0, 231, 1, 0.5)');
-                halo.addColorStop(1, 'transparent');
-                ctx.fillStyle = halo;
-                ctx.globalAlpha = data.glow;
-                ctx.beginPath(); ctx.arc(px, py, gr, 0, Math.PI * 2); ctx.fill();
-                data.glow *= 0.88;
+            ctx.lineCap = 'round';
+
+            if (finishGate.hitColor) {
+                // Winner has crossed: glow in winner's ball color and stay that way until new round
+                var elapsed = now - finishGate.hitTime;
+                var flash = elapsed < 300 ? (1 - elapsed / 300) : 0;
+                var glowBlur = 8 + 8 * flash;
+                var glowAlpha = 0.35 + 0.35 * flash;
+
+                // Soft glow behind the line
+                ctx.beginPath();
+                ctx.moveTo(x1, gy);
+                ctx.lineTo(x2, gy);
+                ctx.strokeStyle = hexToRgba(finishGate.hitColor, glowAlpha);
+                ctx.lineWidth = 4 + 2 * flash;
+                ctx.stroke();
+
+                // Main winner line with glow
+                ctx.beginPath();
+                ctx.moveTo(x1, gy);
+                ctx.lineTo(x2, gy);
+                ctx.strokeStyle = finishGate.hitColor;
+                ctx.lineWidth = 1.8;
+                ctx.shadowColor = finishGate.hitColor;
+                ctx.shadowBlur = glowBlur;
+                ctx.stroke();
+            } else {
+                // Same style as the border before winner is picked
+                ctx.beginPath();
+                ctx.moveTo(x1, gy);
+                ctx.lineTo(x2, gy);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+                ctx.lineWidth = 1.6;
+                ctx.stroke();
             }
 
-            // White peg dot
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = '#ffffff';
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
-            ctx.shadowBlur = 3;
-            ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
-            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+
+        // Draw expanding pulses around hit pegs (Stake-style defined halo disc + rim)
+        pegPulses.forEach(function (p) {
+            var elapsed = now - p.startTime;
+            var t = Math.min(1, elapsed / p.duration);
+            var ease = 1 - Math.pow(1 - t, 2.4);
+            var rStart = BOARD.pegRadius + 0.5;
+            var rEnd = 15.5;
+            var currentR = rStart + (rEnd - rStart) * ease;
+            var alpha = Math.pow(1 - t, 0.85); // Retains solid presence without washed-out fading
+
+            ctx.save();
+            // Luminous halo disc: subtle ball color glow at center, luminous white body, crisp edge
+            var grad = ctx.createRadialGradient(p.x, p.y, rStart * 0.4, p.x, p.y, currentR);
+            grad.addColorStop(0, hexToRgba(p.color, 0.45 * alpha));
+            grad.addColorStop(0.40, hexToRgba(p.color, 0.22 * alpha));
+            grad.addColorStop(0.70, 'rgba(255, 255, 255, ' + (0.30 * alpha) + ')');
+            grad.addColorStop(0.92, 'rgba(255, 255, 255, ' + (0.42 * alpha) + ')');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, currentR, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Defined circular shockwave boundary ring (matches Stake Plinko)
+            ctx.strokeStyle = 'rgba(255, 255, 255, ' + (0.48 * alpha) + ')';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, currentR, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.restore();
+        });
+
+        // Draw pegs — struck pegs adopt ball color and smoothly transition back to white
+        boardPegs.forEach(function (peg) {
+            var px = peg.position.x, py = peg.position.y;
+            var pr = BOARD.pegRadius;
+            var hitElapsed = now - ((peg.pegData && peg.pegData.hitTime) || 0);
+            var hitColor = (peg.pegData && peg.pegData.hitColor) ? peg.pegData.hitColor : '#ffffff';
+            var colorDuration = 900;
+
+            ctx.save();
+            if (hitElapsed < colorDuration) {
+                if (hitElapsed < 140) {
+                    // Initial impact flash: size pop + vivid ball color
+                    var flashT = 1 - (hitElapsed / 140);
+                    var dotR = pr * (1 + 0.35 * flashT);
+                    ctx.fillStyle = hitColor;
+                    ctx.shadowColor = hitColor;
+                    ctx.shadowBlur = 6 * flashT;
+                    ctx.beginPath(); ctx.arc(px, py, dotR, 0, Math.PI * 2); ctx.fill();
+                } else {
+                    // Smooth transition from ball color back to resting white
+                    var colorT = (hitElapsed - 140) / (colorDuration - 140);
+                    var currentColor = lerpColor(hitColor, '#ffffff', colorT);
+                    ctx.fillStyle = currentColor;
+                    ctx.shadowColor = currentColor;
+                    ctx.shadowBlur = 3 * (1 - colorT);
+                    ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+                }
+            } else {
+                // Resting white peg
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = 'rgba(255, 255, 255, 0.35)';
+                ctx.shadowBlur = 2.5;
+                ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+            }
             ctx.restore();
         });
 
@@ -1040,6 +1184,7 @@
                     var player = findPlayerByBody(ball);
                     if (player) {
                         playExitHit();
+                        triggerFinishGate(ball.playerColor || player.color, ball.position.x);
                         markPicked(player);
                         fadeBallsExcept(ball);
                         playFanfare();
@@ -1116,6 +1261,9 @@
             confettiList = [];
             sparkList = [];
             wallGlowList = [];
+            pegPulses = [];
+            finishGate.hitTime = 0;
+            finishGate.hitColor = null;
             var names = parseClassList();
             if (names.length > 0) {
                 if (state.players.length === 0) {
@@ -1266,7 +1414,7 @@
             state.settings.bounciness = parseFloat(e.target.value);
             boardPegs.forEach(function (p) { p.restitution = state.settings.bounciness; });
             boardWalls.forEach(function (w) {
-                if (w.label === 'boundary') w.restitution = Math.min(0.95, Math.max(state.settings.bounciness * 1.3, 0.85));
+                if (w.label === 'boundary') w.restitution = state.settings.bounciness;
             });
             state.players.forEach(function (s) {
                 if (s.body) s.body.restitution = Math.min(0.65, state.settings.bounciness);
@@ -1297,30 +1445,21 @@
         function handleBoardResize() {
             if (!canvas) return;
             resizeCanvas();
-            createBoard();
-            // In READY or IDLE phase, recreate balls at the new scale
-            if (state.phase === PHASES.READY) {
-                removeAllBalls();
-                createBalls();
-            }
         }
 
-        var resizeTimer = null;
-        function debouncedResize() {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(handleBoardResize, 60);
+        // ResizeObserver on board container (.canvas-container) for instant response
+        if (window.ResizeObserver && el.canvas && el.canvas.parentElement && el.canvas.parentElement.parentElement) {
+            var ro = new ResizeObserver(function () {
+                handleBoardResize();
+            });
+            ro.observe(el.canvas.parentElement.parentElement);
         }
 
-        // ResizeObserver on board container for instant response to fullscreen toggles
-        if (window.ResizeObserver && el.canvas && el.canvas.parentElement) {
-            var ro = new ResizeObserver(debouncedResize);
-            ro.observe(el.canvas.parentElement);
-        }
-
-        window.addEventListener('resize', debouncedResize);
+        window.addEventListener('resize', handleBoardResize);
         document.addEventListener('fullscreenchange', function () {
-            setTimeout(handleBoardResize, 50);
-            setTimeout(handleBoardResize, 250);
+            handleBoardResize();
+            setTimeout(handleBoardResize, 60);
+            setTimeout(handleBoardResize, 200);
         });
 
         // Live textarea sync
